@@ -235,6 +235,17 @@ def visualize_episode(agent: DQNAgent, cfg: Config, max_steps: int = 30, sleep_s
     import time
     env = gym.make(cfg.env_id, render_mode="ansi")
     s, info = env.reset(seed=cfg.seed)
+
+    # Decode state to show passenger and destination info before visualization
+    try:
+        taxi_row, taxi_col, passenger_idx, destination_idx = env.unwrapped.decode(s)
+        loc_names = ["Red", "Green", "Yellow", "Blue"]
+        passenger_loc = loc_names[passenger_idx] if 0 <= passenger_idx < 4 else str(passenger_idx)
+        destination_loc = loc_names[destination_idx] if 0 <= destination_idx < 4 else str(destination_idx)
+        print(f"Passenger at: {passenger_loc} | Destination: {destination_loc}")
+    except Exception as e:
+        print(f"Info: could not decode state for passenger/destination ({e})")
+
     print("\n--- Visualizing greedy episode (ANSI) ---")
     for t in range(max_steps):
         print(env.render())
