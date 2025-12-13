@@ -262,7 +262,7 @@ if __name__ == "__main__":
     if args.model_path is not None:
         cfg.save_path = args.model_path  # override save/load path
 
-    if args.eval-only:
+    if args.eval_only:
         env = gym.make(cfg.env_id)
         n_states = env.observation_space.n
         n_actions = env.action_space.n
