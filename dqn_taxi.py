@@ -2,13 +2,14 @@ import random
 import math
 from collections import deque
 from dataclasses import dataclass
-
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
 import gymnasium as gym
+import matplotlib.pyplot as plt
+import argparse
+
 
 
 # ------------------------
@@ -29,6 +30,7 @@ class Config:
     end_epsilon: float = 0.05
     epsilon_decay_episodes: int = 700
     eval_episodes: int = 10
+    save_path: str = "taxi_dqn.pt"
 
 
 # ------------------------
@@ -202,7 +204,73 @@ def train_and_eval(cfg: Config):
         eval_rewards.append(total)
     print(f"Eval avg reward over {cfg.eval_episodes} episodes: {np.mean(eval_rewards):.2f}")
 
+    # Save the trained model
+    try:
+        torch.save(agent.q.state_dict(), cfg.save_path)
+        print(f"Model saved to {cfg.save_path}")
+    except Exception as e:
+        print(f"Failed to save model: {e}")
+
+def evaluate_agent(agent: DQNAgent, cfg: Config, episodes: int | None = None) -> float:
+    env = gym.make(cfg.env_id)
+    episodes = episodes or cfg.eval_episodes
+    eval_rewards = []
+    for _ in range(episodes):
+        s, info = env.reset(seed=cfg.seed)
+        total = 0.0
+        for _ in range(cfg.max_steps_per_episode):
+            with torch.no_grad():
+                s_vec = one_hot_state(s, agent.n_states).to(agent.device)
+                a = int(torch.argmax(agent.q(s_vec)).item())
+            s, r, term, trunc, info = env.step(a)
+            total += r
+            if term or trunc:
+                break
+        eval_rewards.append(total)
+    avg = float(np.mean(eval_rewards))
+    print(f"Eval avg reward over {episodes} episodes: {avg:.2f}")
+    return avg
+
+def visualize_episode(agent: DQNAgent, cfg: Config, max_steps: int = 30, sleep_sec: float = 0.2):
+    import time
+    env = gym.make(cfg.env_id, render_mode="ansi")
+    s, info = env.reset(seed=cfg.seed)
+    print("\n--- Visualizing greedy episode (ANSI) ---")
+    for t in range(max_steps):
+        print(env.render())
+        with torch.no_grad():
+            s_vec = one_hot_state(s, agent.n_states).to(agent.device)
+            a = int(torch.argmax(agent.q(s_vec)).item())
+        s, r, term, trunc, info = env.step(a)
+        time.sleep(sleep_sec)
+        if term or trunc:
+            print(env.render())
+            print(f"Episode finished at step {t+1} with reward {r}")
+            break
+
+
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--eval-only", action="store_true", help="Run evaluation/visualization without training")
+    parser.add_argument("--model-path", type=str, default=None, help="Path to a saved model (.pt)")
+    parser.add_argument("--visualize", action="store_true", help="Show a greedy episode in ANSI")
+    parser.add_argument("--eval-episodes", type=int, default=None, help="Override number of eval episodes")
+    args = parser.parse_args()
+
     cfg = Config()
-    train_and_eval(cfg)
+    if args.model_path is not None:
+        cfg.save_path = args.model_path  # override save/load path
+
+    if args.eval-only:
+        env = gym.make(cfg.env_id)
+        n_states = env.observation_space.n
+        n_actions = env.action_space.n
+        agent = DQNAgent(n_states, n_actions, cfg)
+        agent.q.load_state_dict(torch.load(cfg.save_path, map_location=agent.device), strict=True)
+        evaluate_agent(agent, cfg, episodes=args.eval_episodes)
+        if args.visualize:
+            visualize_episode(agent, cfg, max_steps=30, sleep_sec=0.2)
+    else:
+        train_and_eval(cfg)
+
