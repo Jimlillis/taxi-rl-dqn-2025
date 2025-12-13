@@ -18,16 +18,16 @@ import gymnasium as gym
 class Config:
     env_id: str = "Taxi-v3"
     seed: int = 42
-    episodes: int = 500
+    episodes: int = 1200
     max_steps_per_episode: int = 200
     gamma: float = 0.99
-    batch_size: int = 64
-    replay_capacity: int = 10_000
-    lr: float = 1e-3
-    target_update_every: int = 20
+    batch_size: int = 128
+    replay_capacity: int = 50_000
+    lr: float = 5e-4
+    target_update_every: int = 10
     start_epsilon: float = 1.0
-    end_epsilon: float = 0.1
-    epsilon_decay_episodes: int = 300
+    end_epsilon: float = 0.05
+    epsilon_decay_episodes: int = 700
     eval_episodes: int = 10
 
 
@@ -90,8 +90,8 @@ class DQNAgent:
     def select_action(self, state_idx: int, episode: int):
         # Linear epsilon decay
         eps = self.epsilon_by_episode(episode)
-        if random.random() < eps:
-            return random.randrange(self.n_actions), eps
+        if random.random() < eps: 
+            return random.randrange(self.n_actions), eps 
         with torch.no_grad():
             s_vec = one_hot_state(state_idx, self.n_states).to(self.device)
             q_values = self.q(s_vec)
@@ -100,8 +100,8 @@ class DQNAgent:
 
     def epsilon_by_episode(self, episode: int):
         # Decay epsilon from start to end across epsilon_decay_episodes
-        t = min(episode, self.cfg.epsilon_decay_episodes)
-        frac = t / max(1, self.cfg.epsilon_decay_episodes)
+        t = min(episode, self.cfg.epsilon_decay_episodes) 
+        frac = t / max(1, self.cfg.epsilon_decay_episodes) 
         return self.cfg.start_epsilon + (self.cfg.end_epsilon - self.cfg.start_epsilon) * frac
 
     def store(self, s, a, r, s_next, done):
@@ -111,7 +111,7 @@ class DQNAgent:
         batch = random.sample(self.replay, self.cfg.batch_size)
         s, a, r, s_next, d = zip(*batch)
         return (
-            torch.stack([one_hot_state(si, self.n_states) for si in s]).to(self.device),
+            torch.stack([one_hot_state(si, self.n_states) for si in s]).to(self.device), 
             torch.tensor(a, dtype=torch.long, device=self.device),
             torch.tensor(r, dtype=torch.float32, device=self.device),
             torch.stack([one_hot_state(sj, self.n_states) for sj in s_next]).to(self.device),
@@ -124,12 +124,12 @@ class DQNAgent:
         s, a, r, s_next, d = self.sample_batch()
 
         # Current Q(s,a)
-        q_sa = self.q(s).gather(1, a.view(-1, 1)).squeeze(1)
+        q_sa = self.q(s).gather(1, a.view(-1, 1)).squeeze(1) 
 
         # Target Q: r + gamma * max_a' Q_target(s', a') * (1 - done)
         with torch.no_grad():
-            max_next = self.target_q(s_next).max(1).values
-            target = r + self.cfg.gamma * max_next * (1.0 - d)
+            max_next = self.target_q(s_next).max(1).values 
+            target = r + self.cfg.gamma * max_next * (1.0 - d) 
 
         loss = self.loss_fn(q_sa, target)
         self.optim.zero_grad()
