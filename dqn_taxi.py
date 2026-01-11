@@ -1,5 +1,4 @@
 import random
-import math
 from collections import deque
 from dataclasses import dataclass
 import numpy as np
@@ -10,11 +9,7 @@ import gymnasium as gym
 import matplotlib.pyplot as plt
 import argparse
 
-
-
-# ------------------------
 # Config
-# ------------------------
 @dataclass
 class Config:
     env_id: str = "Taxi-v3"
@@ -32,10 +27,7 @@ class Config:
     eval_episodes: int = 10
     save_path: str = "taxi_dqn.pt"
 
-
-# ------------------------
 # Q-network (small MLP)
-# ------------------------
 class QNetwork(nn.Module):
     def __init__(self, n_states: int, n_actions: int):
         super().__init__()
@@ -52,9 +44,7 @@ class QNetwork(nn.Module):
         return self.model(x)
 
 
-# ------------------------
 # Utils
-# ------------------------
 def set_seed(env, seed: int):
     random.seed(seed)
     np.random.seed(seed)
@@ -67,10 +57,7 @@ def one_hot_state(s: int, n_states: int):
     v[s] = 1.0
     return torch.from_numpy(v)
 
-
-# ------------------------
 # DQN Agent
-# ------------------------
 class DQNAgent:
     def __init__(self, n_states: int, n_actions: int, cfg: Config):
         self.n_states = n_states
@@ -143,18 +130,20 @@ class DQNAgent:
     def update_target(self):
         self.target_q.load_state_dict(self.q.state_dict())
 
-
-# ------------------------
 # Training & Evaluation
-# ------------------------
-
 def train_and_eval(cfg: Config):
     env = gym.make(cfg.env_id) 
     set_seed(env, cfg.seed) 
-
+    
+    from typing import cast
+    from gymnasium.spaces import Discrete
+    
     # Discrete observation space (n=500), discrete actions (n=6)
-    n_states = env.observation_space.n
-    n_actions = env.action_space.n
+    obs_space = cast(Discrete, env.observation_space)
+    act_space = cast(Discrete, env.action_space)
+    n_states = int(obs_space.n)
+    n_actions = int(act_space.n)
+    
     agent = DQNAgent(n_states, n_actions, cfg)
 
     rewards = []
@@ -174,7 +163,7 @@ def train_and_eval(cfg: Config):
                 losses.append(loss)
 
             state = next_state
-            total_r += reward
+            total_r += float(reward)
             if done:
                 break
 
@@ -198,7 +187,7 @@ def train_and_eval(cfg: Config):
                 s_vec = one_hot_state(s, agent.n_states).to(agent.device)
                 a = int(torch.argmax(agent.q(s_vec)).item())
             s, r, term, trunc, info = env.step(a)
-            total += r
+            total += float(r)
             if term or trunc:
                 break
         eval_rewards.append(total)
@@ -223,7 +212,7 @@ def evaluate_agent(agent: DQNAgent, cfg: Config, episodes: int | None = None) ->
                 s_vec = one_hot_state(s, agent.n_states).to(agent.device)
                 a = int(torch.argmax(agent.q(s_vec)).item())
             s, r, term, trunc, info = env.step(a)
-            total += r
+            total += float(r)
             if term or trunc:
                 break
         eval_rewards.append(total)
@@ -238,7 +227,11 @@ def visualize_episode(agent: DQNAgent, cfg: Config, max_steps: int = 30, sleep_s
 
     # Decode state to show passenger and destination info before visualization
     try:
-        taxi_row, taxi_col, passenger_idx, destination_idx = env.unwrapped.decode(s)
+        from typing import cast
+        from gymnasium.envs.toy_text.taxi import TaxiEnv
+
+        taxi_env = cast(TaxiEnv, env.unwrapped)
+        taxi_row, taxi_col, passenger_idx, destination_idx = taxi_env.decode(s)
         loc_names = ["Red", "Green", "Yellow", "Blue"]
         passenger_loc = loc_names[passenger_idx] if 0 <= passenger_idx < 4 else str(passenger_idx)
         destination_loc = loc_names[destination_idx] if 0 <= destination_idx < 4 else str(destination_idx)
@@ -259,8 +252,6 @@ def visualize_episode(agent: DQNAgent, cfg: Config, max_steps: int = 30, sleep_s
             print(f"Episode finished at step {t+1} with reward {r}")
             break
 
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--eval-only", action="store_true", help="Run evaluation/visualization without training")
@@ -275,8 +266,16 @@ if __name__ == "__main__":
 
     if args.eval_only:
         env = gym.make(cfg.env_id)
-        n_states = env.observation_space.n
-        n_actions = env.action_space.n
+        
+        from typing import cast
+        from gymnasium.spaces import Discrete
+        
+        obs_space = cast(Discrete, env.observation_space)
+        act_space = cast(Discrete, env.action_space)
+        
+        n_states = int(obs_space.n)
+        n_actions = int(act_space.n)
+        
         agent = DQNAgent(n_states, n_actions, cfg)
         agent.q.load_state_dict(torch.load(cfg.save_path, map_location=agent.device), strict=True)
         evaluate_agent(agent, cfg, episodes=args.eval_episodes)
@@ -284,4 +283,3 @@ if __name__ == "__main__":
             visualize_episode(agent, cfg, max_steps=30, sleep_sec=0.2)
     else:
         train_and_eval(cfg)
-
